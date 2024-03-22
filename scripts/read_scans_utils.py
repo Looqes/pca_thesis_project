@@ -8,6 +8,7 @@ from IPython.display import display_html
 from itertools import chain, cycle
 
 IMAGE_PATH = "Scans/"
+DELINEATIONS_PATH = ""
 READ_BADLY_NAMED_SCANS = True
 
 def read_patient(patient_id, image_path=IMAGE_PATH):
