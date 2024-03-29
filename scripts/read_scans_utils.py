@@ -2,32 +2,41 @@
 from scripts.patient import Patient
 from os import listdir
 import nibabel as nb
+import nrrd
 from collections import defaultdict
+import time
+from tqdm import tqdm
 
 from IPython.display import display_html
 from itertools import chain, cycle
 
 IMAGE_PATH = "Scans/"
-DELINEATIONS_PATH = ""
+DELINEATIONS_PATH = "Regions ground truth/Regions delineations/"
+# READ_BADLY_NAMED_SCANS = False
 READ_BADLY_NAMED_SCANS = True
 
+AXIALT2_INDICATORS = {"ttset2", "tt2_tse.nii", "T2a.nii", "tT2 TSE"}
+ADC_INDICATORS = {"_adc.nii", "_ADC.nii"}
+PERFUSION_INDICATORS = {"_perffrac.nii", "_perfFrac.nii"}
+
+# Function to create a single patient according to an id and a given path to a folder
+# containing T2 axial scans and DWI ADC and perfusion maps
+# They are matched to predefined name indicators for the filenames, which are manually
+# extracted by examining the data. They differ greatly across the data, introducing
+# complexity to the selection of files to read.
 def read_patient(patient_id, image_path=IMAGE_PATH):
     scans = [f for f in listdir(f"{IMAGE_PATH}{patient_id}")]
     patient = Patient(patient_id)
-    file_has_transformed_imgs = "Transformed" in scans
 
     for scan in scans:
-        # Different founc name formattings in dataset
-        if "ttset2" in scan or \
-           "tt2_tse.nii" in scan or \
-           "T2a.nii" in scan or \
-           "tT2 TSE" in scan:
+        # Check if the indicators appear in the filenames within the scan folders
+        if any([part in scan for part in AXIALT2_INDICATORS]):
             axialt2_img = nb.load(f"{IMAGE_PATH}{patient_id}/{scan}")
             patient.set_axialt2(axialt2_img)
-        elif "_adc.nii" in scan or "_ADC.nii" in scan:
+        elif any([part in scan for part in ADC_INDICATORS]):
             adcdwi_img = nb.load(f"{IMAGE_PATH}{patient_id}/{scan}")
             patient.set_adcdwi(adcdwi_img)
-        elif "_perffrac.nii" in scan or "_perfFrac.nii" in scan:
+        elif any([part in scan for part in PERFUSION_INDICATORS]):
             perffracdwi_img = nb.load(f"{IMAGE_PATH}{patient_id}/{scan}")
             patient.set_perfusionmap(perffracdwi_img)
 
@@ -36,10 +45,10 @@ def read_patient(patient_id, image_path=IMAGE_PATH):
     # These have priority over the other scans in the folder
     if "Transformed" in scans:
         for scan in [f for f in listdir(f"{IMAGE_PATH}{patient_id}/Transformed")]:
-            if "_adc.nii" in scan or "_ADC.nii" in scan:
+            if any([part in scan for part in ADC_INDICATORS]):
                 adcdwi_img = nb.load(f"{IMAGE_PATH}{patient_id}/{scan}")
                 patient.set_adcdwi(adcdwi_img)
-            elif "_perffrac.nii" in scan or "_perfFrac.nii" in scan:
+            elif any([part in scan for part in PERFUSION_INDICATORS]):
                 perffracdwi_img = nb.load(f"{IMAGE_PATH}{patient_id}/{scan}")
                 patient.set_perfusionmap(perffracdwi_img)
 
@@ -70,6 +79,45 @@ def read_patient(patient_id, image_path=IMAGE_PATH):
         return None
             
     return patient
+
+
+# Pair of functions to read .nrrd delineation files and return a folder_name
+# indexed dictionary pointing to the filenames with their data
+def read_delineations(delineations_path = DELINEATIONS_PATH):
+    result = defaultdict()
+
+    for folder in tqdm(listdir(delineations_path)):
+        # print(folder)
+        result[folder] = read_delineation(delineations_path + "/" + folder)
+    
+    return result
+
+def read_delineation(delineations_folder_path):
+    delineations = []
+
+    for file in listdir(delineations_folder_path):
+        delineation = nrrd.read(delineations_folder_path + "/" + file)
+        delineations.append((file, delineation))
+    
+    return delineations
+
+
+def combine_patients_delineations(patients, delineations):
+    for patient_id, delineations_patient in delineations.items():
+        delineation_shapes = {delineations_patient[i][1][0].shape for i in range(len(delineations_patient))}
+
+        # Delineations are of a patient that has no loaded imaging data
+        if patient_id not in patients:
+            continue
+        patient = patients[patient_id]
+        # Shapes of delineations must be the same and shape of delineation must match shape of patient axial t2w
+        if len(delineation_shapes) == 1 and\
+           patient.get_axialt2_image_array().shape == next(iter(delineation_shapes)):
+            patient.add_delineations(delineations)
+        else:
+            del patients[patient_id]
+            
+           
 
 # patient7 = read_patient("MARPROC017_nii")
 
