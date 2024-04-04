@@ -40,7 +40,10 @@ print()
 # Adding the delineations to their patients
 print("Adding delineations to patients...")
 read_scans_utils.combine_patients_delineations(patients, delineations)
-Patient.show_patient_delineation_slices(patients["MARPROC007"])
-Patient.show_patient_delineation_slices(patients["MARPROC204"])
+
 print()
+
+# Patient.show_patient_delineation_slices(patients["MARPROC007"])
+# Patient.show_patient_delineation_slices(patients["MARPROC204"])
+# print()
 

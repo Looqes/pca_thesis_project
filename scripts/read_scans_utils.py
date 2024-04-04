@@ -9,6 +9,7 @@ from os import listdir
 import nibabel as nb
 import nrrd
 import pandas as pd
+import numpy as np
 from collections import defaultdict
 import time
 from tqdm import tqdm
@@ -30,22 +31,32 @@ PERFUSION_INDICATORS = {"_perffrac.nii", "_perfFrac.nii"}
 # They are matched to predefined name indicators for the filenames, which are manually
 # extracted by examining the data. They differ greatly across the data, introducing
 # complexity to the selection of files to read.
-def read_patient(patient_id, scan_seriesnumbers, print_errors=False):    
-    seriesnumber = scan_seriesnumbers[patient_id[:-4]] if patient_id[:-4] in scan_seriesnumbers \
-        else None
+def read_patient(patient_id, seriesnumbers_dict, print_errors=False):    
+    seriesnumber, sequence, number_of_slices = seriesnumbers_dict[patient_id[:-4]] \
+        if patient_id[:-4] in seriesnumbers_dict \
+        else (None, None, None)
 
     scans = [f for f in listdir(f"{IMAGE_PATH}{patient_id}")]
     patient = Patient(patient_id)
 
     for scan in scans:
-        # Check if the indicators appear in the filenames within the scan folders
-        # if any([part in scan for part in AXIALT2_INDICATORS]):
-            # axialt2_img = nb.load(f"{IMAGE_PATH}{patient_id}/{scan}")
-            # patient.set_axialt2(axialt2_img)
-        if ("MARPROC" in scan and "T2a" in scan) or \
-           (seriesnumber != None and seriesnumber in scan and ("t2" in scan or "T2" in scan)):
+        # Check if a series number was found for the patient
+        # If so check if the series number appears in the filename & if
+        # the file is a t2 scan (t2 or T2 appears in filename)
+        # If not, check if the file is an exception & if *sequence
+        # appears in its filename (usually "MARPROC....")
+        if (seriesnumber, sequence, number_of_slices) != (None, None, None) and \
+            ((not pd.isna(seriesnumber) and seriesnumber in scan and ("t2" in scan or "T2" in scan))
+              or sequence in scan):
             axialt2_img = nb.load(f"{IMAGE_PATH}{patient_id}/{scan}")
             patient.set_axialt2(axialt2_img)
+
+            # Check if the shape of the image matches the manually extracted amount of slices from inspection
+            patient_axial_shape = patient.get_axialt2_image_array().shape
+            if patient_axial_shape[2] != number_of_slices:
+                print("--------------------")
+                print(patient_id)
+                print("Shape ", patient_axial_shape, " doesnt match number of slices ", number_of_slices, "\n")
         elif any([part in scan for part in ADC_INDICATORS]):
             adcdwi_img = nb.load(f"{IMAGE_PATH}{patient_id}/{scan}")
             patient.set_adcdwi(adcdwi_img)
@@ -66,13 +77,13 @@ def read_patient(patient_id, scan_seriesnumbers, print_errors=False):
                 patient.set_perfusionmap(perffracdwi_img)
 
     # Check for cases where t2scans aren't named by plane & thus arent read correctly
-    if READ_BADLY_NAMED_SCANS == True and patient.axialt2 == None:
-        # By experimentation it is learned that when 3 t2 scans are present in a patient file,
-        # the middle one is the axial scan
-        t2scans = [f for f in scans if "t2" in f or "T2" in f]
-        if len(t2scans) == 3:
-            axialt2_img = nb.load(f"{IMAGE_PATH}{patient_id}/{t2scans[1]}")
-            patient.set_axialt2(axialt2_img)
+    # if READ_BADLY_NAMED_SCANS == True and patient.axialt2 == None:
+    #     # By experimentation it is learned that when 3 t2 scans are present in a patient file,
+    #     # the middle one is the axial scan
+    #     t2scans = [f for f in scans if "t2" in f or "T2" in f]
+    #     if len(t2scans) == 3:
+    #         axialt2_img = nb.load(f"{IMAGE_PATH}{patient_id}/{t2scans[1]}")
+    #         patient.set_axialt2(axialt2_img)
     
     couldntfind = False
     if patient.axialt2 == None:
@@ -95,9 +106,17 @@ def read_patient(patient_id, scan_seriesnumbers, print_errors=False):
                 
     return patient
 
+
+# Function that loads an excel sheet containing information that maps a patient id to the series number
+# of that patient's axial scan, and to the name of that patient's axial scan if the normally named file
+# is absent. 
+# Also load the expected amount of slices to be found in the axial scan for error checking.
 def load_series_numbers_dict(filename):
-    df = pd.read_excel(filename, dtype= {"SeriesNumber": str})[["Anonymization", "SeriesNumber"]]
-    return {patient_id: series_number for patient_id, series_number in zip(df["Anonymization"], df["SeriesNumber"])}
+    df = pd.read_excel(filename, dtype= {"SeriesNumber": str, "NumberOfSlices": int})
+
+    return {row["Anonymization"]: [row["SeriesNumber"], row["Sequence"], row["NumberOfSlices"]]
+            for _, row in df.iterrows()}
+
 
 # Function to read and load a dictionary mapping patient id's to patient imaging data
 # The patient id's are read from the foldernames of the patients
@@ -108,7 +127,8 @@ def read_patients(scans_data_path, seriesnumber_info_path):
     erroneous_data_patients = []
     scan_seriesnumbers = load_series_numbers_dict(seriesnumber_info_path)
 
-    for folder in tqdm([f for f in listdir(scans_data_path)]):
+    # for folder in tqdm([f for f in listdir(scans_data_path)]):
+    for folder in [f for f in listdir(scans_data_path)]:
         patient_id = folder[:-4]
         patient = read_patient(folder, scan_seriesnumbers, print_errors=True)
         
@@ -119,12 +139,14 @@ def read_patients(scans_data_path, seriesnumber_info_path):
     
     return patients, erroneous_data_patients
 
+
 # Pair of functions to read .nrrd delineation files and return a folder_name
 # indexed dictionary pointing to the filenames with their data
 def read_delineations(delineations_path = DELINEATIONS_PATH):
     result = defaultdict()
 
     for folder in tqdm(listdir(delineations_path)):
+    # for folder in listdir(delineations_path):
         # print(folder)
         result[folder] = read_delineation(delineations_path + "/" + folder)
     
@@ -143,7 +165,8 @@ def read_delineation(delineations_folder_path):
 def combine_patients_delineations(patients, delineations):
     deleted_ids = []
 
-    for patient_id, delineations_patient in tqdm(delineations.items()):
+    # for patient_id, delineations_patient in tqdm(delineations.items()):
+    for patient_id, delineations_patient in delineations.items():
         # print(patient_id)
         # print(delineations_patient)
         delineation_shapes = {delineations_patient[i][1][0].shape for i in range(len(delineations_patient))}
@@ -155,12 +178,11 @@ def combine_patients_delineations(patients, delineations):
         # Shapes of delineations must be the same and shape of delineation must match shape of patient axial t2w
         if len(delineation_shapes) == 1 and \
            patient.get_axialt2_image_array().shape == next(iter(delineation_shapes)):
-            # print(delineations_patient[0][0])
             patient.add_delineations(delineations_patient)
         else:
             print("Problem with delineations for ", patient_id, ". Shapes: ")
-            print(next(iter(delineation_shapes)))
-            print(patient.get_axialt2_image_array().shape)
+            print("AxialT2:     ", patient.get_axialt2_image_array().shape)
+            print("Delineation: ", next(iter(delineation_shapes)))
             print()
             # print(patient.get_axialt2_image_array().shape == next(iter(delineation_shapes)))
             del patients[patient_id]
