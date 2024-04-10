@@ -4,8 +4,8 @@ import importlib
 from patient import Patient
 # importlib.reload(sys.modules["scripts.patient"])
 
-
 from os import listdir
+import os
 import nibabel as nb
 import nrrd
 import pandas as pd
@@ -13,9 +13,13 @@ import numpy as np
 from collections import defaultdict
 import time
 from tqdm import tqdm
+import pickle
 
 from IPython.display import display_html
 from itertools import chain, cycle
+
+import psutil
+
 
 IMAGE_PATH = "../data/Scans/"
 DELINEATIONS_PATH = "../data/Regions ground truth/Regions delineations/"
@@ -25,6 +29,7 @@ READ_BADLY_NAMED_SCANS = False
 AXIALT2_INDICATORS = {"ttset2", "tt2_tse.nii", "T2a.nii", "tT2 TSE"}
 ADC_INDICATORS = {"_adc.nii", "_ADC.nii"}
 PERFUSION_INDICATORS = {"_perffrac.nii", "_perfFrac.nii"}
+
 
 # Function to create a single patient according to an id and a given path to a folder
 # containing T2 axial scans and DWI ADC and perfusion maps
@@ -75,16 +80,7 @@ def read_patient(patient_id, seriesnumbers_dict, print_errors=False):
             elif any([part in scan for part in PERFUSION_INDICATORS]):
                 perffracdwi_img = nb.load(f"{IMAGE_PATH}{patient_id}/{scan}")
                 patient.set_perfusionmap(perffracdwi_img)
-
-    # Check for cases where t2scans aren't named by plane & thus arent read correctly
-    # if READ_BADLY_NAMED_SCANS == True and patient.axialt2 == None:
-    #     # By experimentation it is learned that when 3 t2 scans are present in a patient file,
-    #     # the middle one is the axial scan
-    #     t2scans = [f for f in scans if "t2" in f or "T2" in f]
-    #     if len(t2scans) == 3:
-    #         axialt2_img = nb.load(f"{IMAGE_PATH}{patient_id}/{t2scans[1]}")
-    #         patient.set_axialt2(axialt2_img)
-    
+  
     couldntfind = False
     if patient.axialt2 == None:
         print_errors == True and print("Couldnt find axialt2")
@@ -127,8 +123,9 @@ def read_patients(scans_data_path, seriesnumber_info_path):
     erroneous_data_patients = []
     scan_seriesnumbers = load_series_numbers_dict(seriesnumber_info_path)
 
-    # for folder in tqdm([f for f in listdir(scans_data_path)]):
-    for folder in [f for f in listdir(scans_data_path)]:
+    for folder in tqdm([f for f in listdir(scans_data_path)]):
+    # print("Reading first 5 patients...")
+    # for folder in tqdm([f for f in listdir(scans_data_path)][0:5]):
         patient_id = folder[:-4]
         patient = read_patient(folder, scan_seriesnumbers, print_errors=True)
         
@@ -145,9 +142,9 @@ def read_patients(scans_data_path, seriesnumber_info_path):
 def read_delineations(delineations_path = DELINEATIONS_PATH):
     result = defaultdict()
 
+    # print("Reading first 5 patients' delineations...")
+    # for folder in tqdm(listdir(delineations_path)[:5]):
     for folder in tqdm(listdir(delineations_path)):
-    # for folder in listdir(delineations_path):
-        # print(folder)
         result[folder] = read_delineation(delineations_path + "/" + folder)
     
     return result
@@ -162,13 +159,15 @@ def read_delineation(delineations_folder_path):
     return delineations
 
 
+# Function to add delineations data to a dictionary of patient objects by
+# patient_id as key
+# Checks if the delineations have a consistent shape and if the shape matches
+# that of the T2 scan of the patient to which the delineation is registered
 def combine_patients_delineations(patients, delineations):
     deleted_ids = []
 
-    # for patient_id, delineations_patient in tqdm(delineations.items()):
-    for patient_id, delineations_patient in delineations.items():
-        # print(patient_id)
-        # print(delineations_patient)
+    for patient_id, delineations_patient in tqdm(delineations.items()):
+    # for patient_id, delineations_patient in delineations.items():
         delineation_shapes = {delineations_patient[i][1][0].shape for i in range(len(delineations_patient))}
 
         # Delineations are of a patient that has no loaded imaging data
@@ -184,28 +183,72 @@ def combine_patients_delineations(patients, delineations):
             print("AxialT2:     ", patient.get_axialt2_image_array().shape)
             print("Delineation: ", next(iter(delineation_shapes)))
             print()
-            # print(patient.get_axialt2_image_array().shape == next(iter(delineation_shapes)))
             del patients[patient_id]
             deleted_ids.append(patient_id)
     
+    # Save memory usage
+    del delineations
+    
     return deleted_ids
+
+
+# Will reshape the DWI images of all patients in given patients dict to match axial t2 images of patients
+def resize_dwis(patients):
+    with tqdm(total=100, desc='cpu%', position=1) as cpubar, tqdm(total=100, desc='ram%', position=0) as rambar:
+        for patient_id in tqdm(patients):
+            rambar.n=psutil.virtual_memory().percent
+            cpubar.n=psutil.cpu_percent()
+            rambar.refresh()
+            cpubar.refresh()
+            patient = patients[patient_id]        
+            patient.scale_dwis_to_t2()
+
+
+# For each patient in the given dict:
+# create a subset of slices of each of the image modalities from patient
+# select only slices that have a delineation associated with them
+def extract_delineated_slices(patients):
+    for patient_id in patients:
+        patient = patients[patient_id]
+
+        patient.extract_slice_tuples()
+
+
+def write_patient_objects_to_pickle(patients, path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+        print(f"Folder '{path}' created successfully.")
+
+    for patient_id in tqdm(patients):
+        with open(path + patient_id + ".pkl", 'wb') as output:
+            pickle.dump(patients[patient_id], output, pickle.HIGHEST_PROTOCOL)
+
+def load_patient_objects_from_pickle(path):
+    if not os.path.exists(path):
+        print(path)
+        print("Doesn't exist...")
+
+    patients = defaultdict(str)
+    print(os.listdir(path))
+    for file in os.listdir(path):
+        with open(path + file, 'rb') as input:
+            patient = pickle.load(input)
+            patients[file[:-4]] = patient
+    
+    return patients
+
+
             
-           
+# path = "../data"
+def write_patient_model_data(patients, path):
+    model_data_path = path + "/nnUNet_raw/Dataset001_pca"
 
-# patient7 = read_patient("MARPROC017_nii")
+    if not os.path.exists(model_data_path):
+        os.makedirs(model_data_path)
+        print(f"Folder '{model_data_path}' created successfully.")
+    else:
+        print(f"Folder '{model_data_path}' already exists.")
 
 
-# patient7.axialt2
-# read_patient("MARPROC009_nii")
-# read_patient("MARPROC012_nii")
-
-
-# Function to display two dataframes next to eachother
-def display_side_by_side(*args, titles=cycle([''])):
-    html_str = ''
-    for df, title in zip(args, chain(titles, cycle(['</br>']))):
-        html_str += '<th style="text-align:center"><td style="vertical-align:top">'
-        html_str += f'<h2 style="text-align: center;">{title}</h2>'
-        html_str += df.to_html().replace('table', 'table style="display:inline"')
-        html_str += '</td></th>'
-    display_html(html_str, raw=True)
+    # for patient_id in patients:
+    #     patient = patients[patient_id]
