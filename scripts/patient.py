@@ -3,6 +3,8 @@ import numpy as np
 import nilearn.image as ni_im
 from nibabel.spatialimages import SpatialFirstSlicer
 import nibabel as nb
+import os
+import pickle
 
 
 class Patient:
@@ -87,6 +89,7 @@ class Patient:
             "cribriform": delineated_slices_Cribriform
         }
 
+
     # Display function to visualize which slices of patient have delineations for
     # the different Gleason pattern types
     def show_patient_delineation_slices(self):
@@ -131,30 +134,52 @@ class Patient:
             return
         
         delineated_slices = self.get_patient_delineation_slices()
-        print(delineated_slices)
-        slice_numbers = list(set(delineated_slices["gg3"]) |
-                             set(delineated_slices["gg4"]) |
-                             set(delineated_slices["cribriform"]))
-        print(slice_numbers)
+        slice_numbers = sorted(list(set(delineated_slices["gg3"]) |
+                                    set(delineated_slices["gg4"]) |
+                                    set(delineated_slices["cribriform"])))
 
-        print(self.axialt2.shape)
+        # Slicing
+        t2_affine = self.axialt2.affine
+        t2_slices = self.axialt2.get_fdata()[:, :, slice_numbers]
+        t2_subimg = nb.Nifti1Image(t2_slices, t2_affine)
 
-        print(SpatialFirstSlicer(self.axialt2)[:, :, slice_numbers].shape)
+        adc_affine = self.adcmap.affine
+        adc_slices = self.adcmap.get_fdata()[:, :, slice_numbers]
+        adc_subimg = nb.Nifti1Image(adc_slices, adc_affine)
 
-        # self.model_data = {"axialt2":      SpatialFirstSlicer(self.axialt2)     [:, :, slice_numbers],
-        #                    "adcmap":       SpatialFirstSlicer(self.adcmap)      [:, :, slice_numbers],
-        #                    "perfusionmap": SpatialFirstSlicer(self.perfusionmap)[:, :, slice_numbers],
-        #                    "region_delineation": nb.Nifti1Image(self.region_delineation[:, :, slice_numbers],
-        #                                                         self.model_data["axialt2"].affine)
-                        #    }
+        perfusion_affine = self.perfusionmap.affine
+        perfusion_slices = self.perfusionmap.get_fdata()[:, :, slice_numbers]
+        perfusion_subimg = nb.Nifti1Image(perfusion_slices, perfusion_affine)
+
+        delineation_slices = np.flip(self.region_delineation[:, :, slice_numbers], axis = 1)
+        # Use t2 affine as the delineation is mapped to the t2
+        delineation_subimg = nb.Nifti1Image(delineation_slices, t2_affine)
+
+        self.model_data = {"axialt2":      t2_subimg,
+                           "adcmap":       adc_subimg,
+                           "perfusionmap": perfusion_subimg,
+                           "region_delineation": delineation_subimg
+                           }
         
 
+    def write_to_pkl(self, path):
+        if not os.path.exists(path):
+            os.makedirs(path)
+            print(f"Folder '{path}' created successfully.")
 
+        with open(path + "/" + self.id + ".pkl", 'wb') as output:
+            pickle.dump(self, output, pickle.HIGHEST_PROTOCOL)
+        
 
-        # t2_slices = [self.axialt2[:, :, i] for i in slice_numbers]
-        # adc_slices = [self.adcmap[:, :, i] for i in slice_numbers]
-        # perfusion_slices = [self.perfusionmap[:, :, i] for i in slice_numbers]
+    def write_patient_model_data(self, path):
+        path = path + "/" + self.id
+        if not os.path.exists(path):
+            os.makedirs(path)
+            print(f"Folder '{path}' created successfully.")
+        else:
+            print(f"Folder '{path}' already exists.")
 
-        # print(t2_slices.shape)
-        # print(adc_slices.shape)
-        # print(perfusion_slices.shape)
+        nb.save(self.model_data["axialt2"], path + "/t2.nii")
+        nb.save(self.model_data["adcmap"], path + "/adc.nii")
+        nb.save(self.model_data["perfusionmap"], path + "/perf.nii")
+        nb.save(self.model_data["region_delineation"], path + "/delineation.nii")
