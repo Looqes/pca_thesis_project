@@ -29,35 +29,9 @@ class Patient:
     def set_perfusionmap(self, perfusionmap):
         self.perfusionmap = perfusionmap
 
-    # Add delineations
-    def add_delineations(self, delineations):
-        for delineation in delineations:
-            # print(delineation[0])
-            if "GG3" in delineation[0]:
-                # print("Adding GG3 delineation...")
-                self.add_gg3_delineation(delineation[1][0])
-            elif "GG4" in delineation[0]:
-                # print("Adding GG4 delineation...")
-                self.add_gg4_delineation(delineation[1][0])
-            elif "Cribriform" in delineation[0]:
-                # print("Adding Cribriform delineation...")
-                self.add_cribriform_delineation(delineation[1][0])
-
-    # Function to add a GG3 delineation map to the total delineation
-    # map of this patient. All non-zero values in the delineation will
-    # map a 1 to the total delineation map of the patient on that same
-    # position
-    # 1 will signify a voxel being classified as GG3
-    def add_gg3_delineation(self, delineation):
-        self.region_delineation[delineation != 0] = 1
-
-    # gg4 voxels will have value 2
-    def add_gg4_delineation(self, delineation):
-        self.region_delineation[delineation != 0] = 2
-
-    # Cribriform voxels will have value 3
-    def add_cribriform_delineation(self, delineation):
-        self.region_delineation[delineation != 0] = 3
+    def set_delineation(self, delineation):
+        self.region_delineation = delineation
+        
 
 
     def get_axialt2_image_array(self):
@@ -75,7 +49,7 @@ class Patient:
         delineated_slices_gg4 = []
         delineated_slices_Cribriform = []
 
-        for i, slice in enumerate(np.rollaxis(self.region_delineation, 2)):
+        for i, slice in enumerate(np.rollaxis(self.region_delineation.get_fdata(), 2)):
             if 1 in slice:
                 delineated_slices_gg3.append(i)
             if 2 in slice:
@@ -151,9 +125,8 @@ class Patient:
         perfusion_slices = self.perfusionmap.get_fdata()[:, :, slice_numbers]
         perfusion_subimg = nb.Nifti1Image(perfusion_slices, perfusion_affine)
 
-        delineation_slices = np.flip(self.region_delineation[:, :, slice_numbers], axis = 1)
-        # Use t2 affine as the delineation is mapped to the t2
-        delineation_subimg = nb.Nifti1Image(delineation_slices, t2_affine)
+        delineation_subimg = nb.Nifti1Image(self.region_delineation.get_fdata()[:, :, slice_numbers], 
+                                            self.region_delineation.affine)
 
         self.model_data = {"axialt2":      t2_subimg,
                            "adcmap":       adc_subimg,
