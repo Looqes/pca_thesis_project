@@ -1,8 +1,4 @@
-# from patient import Patient
-import sys
-import importlib
 from patient import Patient
-# importlib.reload(sys.modules["scripts.patient"])
 
 from os import listdir
 import os
@@ -11,22 +7,16 @@ import nibabel as nb
 import nrrd
 import pandas as pd
 import numpy as np
-from collections import defaultdict
-import time
-from tqdm import tqdm
 import pickle
 import SimpleITK as sitk
 
-from IPython.display import display_html
-from itertools import chain, cycle
-
-import psutil
 
 
-IMAGE_PATH = "../data/Scans/"
+
+SCANS_PATH = "../data/Scans"
 DELINEATIONS_PATH = "../data/Regions ground truth/Regions delineations/"
 
-AXIALT2_INDICATORS = {"ttset2", "tt2_tse.nii", "T2a.nii", "tT2 TSE"}
+AXIALT2_INDICATORS = {"t2", "T2"}
 ADC_INDICATORS = {"_adc.nii", "_ADC.nii"}
 PERFUSION_INDICATORS = {"_perffrac.nii", "_perfFrac.nii"}
 
@@ -36,14 +26,18 @@ PERFUSION_INDICATORS = {"_perffrac.nii", "_perfFrac.nii"}
 # They are matched to predefined name indicators for the filenames, which are manually
 # extracted by examining the data. They differ greatly across the data, introducing
 # complexity to the selection of files to read.
-def read_patient(folder_name, seriesnumbers_dict, print_errors=False):   
+def read_patient(folder_name, seriesnumbers_dict, print_errors=False, scans_path=SCANS_PATH):   
     patient_id = folder_name[:-4] 
-    seriesnumber, sequence, number_of_slices = seriesnumbers_dict[patient_id] \
-        if patient_id in seriesnumbers_dict \
-        else (None, None, None)
-
-    scans = [f for f in listdir(f"{IMAGE_PATH}{folder_name}")]
     patient = Patient(patient_id)
+    seriesnumber, sequence = seriesnumbers_dict[patient_id] \
+        if patient_id in seriesnumbers_dict \
+        else (None, None)
+    
+    # Search patient scans folder
+    path_to_patient_scans = f"{scans_path}/{folder_name}"
+    if "nii" in os.listdir(path_to_patient_scans):
+        path_to_patient_scans += "/nii"
+    scans = [f for f in os.listdir(path_to_patient_scans)]
 
     for scan in scans:
         # Check if a series number was found for the patient
@@ -51,35 +45,29 @@ def read_patient(folder_name, seriesnumbers_dict, print_errors=False):
         # the file is a t2 scan (t2 or T2 appears in filename)
         # If not, check if the file is an exception & if *sequence
         # appears in its filename (usually "MARPROC....")
-        if (seriesnumber, sequence, number_of_slices) != (None, None, None) and \
-            ((not pd.isna(seriesnumber) and seriesnumber in scan and ("t2" in scan or "T2" in scan))
+        if (seriesnumber, sequence) != (None, None) and \
+            ((not pd.isna(seriesnumber) and seriesnumber in scan and \
+              (any([indicator in scan for indicator in AXIALT2_INDICATORS])))
               or sequence in scan):
-            axialt2_img = nb.load(f"{IMAGE_PATH}{folder_name}/{scan}")
+            axialt2_img = nb.load(f"{path_to_patient_scans}/{scan}")
             patient.set_axialt2(axialt2_img)
-
-            # Check if the shape of the image matches the manually extracted amount of slices from inspection
-            patient_axial_shape = patient.get_axialt2_image_array().shape
-            if patient_axial_shape[2] != number_of_slices:
-                print("--------------------")
-                print(folder_name)
-                print("Shape ", patient_axial_shape, " doesnt match number of slices ", number_of_slices, "\n")
         elif any([part in scan for part in ADC_INDICATORS]):
-            adcdwi_img = nb.load(f"{IMAGE_PATH}{folder_name}/{scan}")
+            adcdwi_img = nb.load(f"{path_to_patient_scans}/{scan}")
             patient.set_adcdwi(adcdwi_img)
         elif any([part in scan for part in PERFUSION_INDICATORS]):
-            perffracdwi_img = nb.load(f"{IMAGE_PATH}{folder_name}/{scan}")
+            perffracdwi_img = nb.load(f"{path_to_patient_scans}/{scan}")
             patient.set_perfusionmap(perffracdwi_img)
 
     # Some patient folder contain an additional folder called "Transformed"
     # This folder contains images that were manually registered to T2w scans
     # These have priority over the other scans in the folder
     if "Transformed" in scans:
-        for scan in [f for f in listdir(f"{IMAGE_PATH}{folder_name}/Transformed")]:
+        for scan in [f for f in listdir(f"{path_to_patient_scans}/Transformed")]:
             if any([part in scan for part in ADC_INDICATORS]):
-                adcdwi_img = nb.load(f"{IMAGE_PATH}{folder_name}/{scan}")
+                adcdwi_img = nb.load(f"{path_to_patient_scans}/{scan}")
                 patient.set_adcdwi(adcdwi_img)
             elif any([part in scan for part in PERFUSION_INDICATORS]):
-                perffracdwi_img = nb.load(f"{IMAGE_PATH}{folder_name}/{scan}")
+                perffracdwi_img = nb.load(f"{path_to_patient_scans}/{scan}")
                 patient.set_perfusionmap(perffracdwi_img)
   
     couldntfind = False
@@ -111,7 +99,7 @@ def read_patient(folder_name, seriesnumbers_dict, print_errors=False):
 def load_series_numbers_dict(filepath):
     df = pd.read_excel(filepath, dtype= {"SeriesNumber": str, "NumberOfSlices": int})
 
-    return {row["Anonymization"]: [row["SeriesNumber"], row["Sequence"], row["NumberOfSlices"]]
+    return {row["Anonymization"]: [row["SeriesNumber"], row["Sequence"]]
             for _, row in df.iterrows()}
 
 
@@ -128,13 +116,13 @@ def read_preprocess_patients(scans_data_path, seriesnumber_info_path, patients_t
     erroneous_data_patients = []
     scan_seriesnumbers = load_series_numbers_dict(seriesnumber_info_path)
     
-    # for folder in [f for f in listdir(scans_data_path)][0:5]:
     for folder in [f for f in listdir(scans_data_path)]:
         patient_id = folder[:-4]
         
         if patient_id in patients_to_skip:
             continue
 
+        # 1. Read the scans of patient & construct patient object
         patient = read_patient(folder, scan_seriesnumbers, print_errors=True)
         
         if patient == None:
@@ -142,7 +130,19 @@ def read_preprocess_patients(scans_data_path, seriesnumber_info_path, patients_t
             erroneous_data_patients += patient_id
             continue
         
-        delineation = read_combined_delineation(patient_id) 
+        # 2. Try to find & read delineation of patient
+        try:
+            delineation = read_combined_delineation(patient_id) 
+        except FileNotFoundError:
+            print(f"No delineation file found for {patient_id}")
+            erroneous_data_patients += patient_id
+            continue
+        except:
+            print(f"Unknown error for {patient_id}")
+            erroneous_data_patients += patient_id
+            continue
+
+        # 3. Check if the delineation is correct
         if patient.get_axialt2_image_array().shape != delineation.get_fdata().shape:  
             print("Error reading delineation for ", patient_id)
             print("Shapes do not match")
@@ -151,12 +151,58 @@ def read_preprocess_patients(scans_data_path, seriesnumber_info_path, patients_t
             erroneous_data_patients += patient_id
             continue
 
+        # 4. Add delineations to patient & apply required preprocessing
         patient.set_delineation(delineation)
         patient.scale_dwis_to_t2()
         patient.extract_slice_tuples()
 
         yield patient
 
+    return erroneous_data_patients
+
+
+# Function to load patient pkls and reprocess their delineations, essentially
+# overwriting their delineation data
+# Will follow up with required checking of consistency (e.g. comparing shape)
+# and resetting the model_data field for the patients aswell, as it is dependent
+# on delineation data
+def reprocess_patients_delineations(patients):
+    # First re-create the nii delineations from the raw data
+    convert_delineations_to_nii()
+
+    erroneous_data_patients = []
+
+    # Reset the delineations & model data for each patient
+    for patient in patients:
+        patient_id = patient.id
+        print(f"Reprocessing patient {patient_id}")
+
+        # 1. Try to find & read delineation of patient
+        try:
+            delineation = read_combined_delineation(patient_id) 
+        except FileNotFoundError:
+            print(f"No delineation file found for {patient_id}")
+            erroneous_data_patients += patient_id
+            continue
+        except:
+            print(f"Unknown error for {patient_id}")
+            erroneous_data_patients += patient_id
+            continue
+
+        # 2. Check if the delineation is correct
+        if patient.get_axialt2_image_array().shape != delineation.get_fdata().shape:  
+            print("Error reading delineation for ", patient_id)
+            print("Shapes do not match")
+            print(f"t2          :{patient.get_axialt2_image_array().shape}")
+            print(f"delineation :{delineation.get_fdata().shape}\n")
+            erroneous_data_patients += patient_id
+            continue
+
+        # 3. Reset the delineation & set model_data
+        #    This time skip the rescaling step of DWIs, only delineations are reset
+        patient.set_delineation(delineation)
+        patient.extract_slice_tuples()
+    
     return erroneous_data_patients
 
 
@@ -167,13 +213,6 @@ def read_combined_delineation(patient_id):
     return nb.load(path)
 
 
-def load_patient_from_pickle(patient_id):
-    path = f"../data/pkl_preprocessed/{patient_id}.pkl"
-    with open(path, 'rb') as input:
-        patient = pickle.load(input)
-            
-    return patient
-
 # Read all patients from patient objects saved in pickle files in specified folder
 def load_patients_from_pickle(pickles_path):
     if not os.path.exists(pickles_path):
@@ -182,22 +221,21 @@ def load_patients_from_pickle(pickles_path):
         return
 
     for patient_file in os.listdir(pickles_path):
-        patient = load_patient_from_pickle(patient_file.replace(".pkl", ""))
+        patient = Patient.load_patient_from_pkl(patient_file.replace(".pkl", ""))
 
         yield patient
 
 
-def create_datasetjson(path):
-    with open("../data/nnUNet_raw/Dataset001_pca/splits_final.json", 'r', encoding='utf-8') as f:
-        split = json.load(f)
-        num_training_cases = len(split[0]["train"])
+def create_datasetjson(path, modalities):
+    # Number of training cases is the total number of training patients
+    # divided by the number of modalities (3)
+    num_training_cases = int(len(os.listdir(f"{path}/ImagesTr"))/len(modalities))
+    channel_names = {int(num): modality
+                     for num, modality
+                     in zip(range(len(modalities)), modalities)}
 
     dataset_dict = {
-        "channel_names": {
-            "0": "AxialT2",
-            "1": "ADC",
-            "2": "Perfusion"
-        },
+        "channel_names": channel_names,
         "labels": {
             "background": 0,
             "GG3": 1,
@@ -255,7 +293,7 @@ def collect_patient_metadata(patients=None, read_from_files=False):
         os.makedirs("../data/patient_metadata")
         print(f"Folder ../data/patient_metadata created successfully.")
 
-    if read_from_files == True or patient == None:
+    if read_from_files == True or patients == None:
         with open("../data/patient_metadata/voxel_dists.pkl", 'rb') as f:
             voxel_dists = pickle.load(f)
 
@@ -279,7 +317,7 @@ def collect_patient_metadata(patients=None, read_from_files=False):
         shapes.append(patient.get_axialt2_image_array().shape)
 
         # Collecting voxel counts for the patient's full image
-        unique, counts = np.unique(patient.region_delineation, return_counts=True)
+        unique, counts = np.unique(patient.region_delineation.get_fdata(), return_counts=True)
         gg_voxel_dist = dict(zip(unique.astype(int), counts))
         voxel_dists["full_image"].append((patient.id, gg_voxel_dist))
 
@@ -323,9 +361,13 @@ def convert_delineations_to_nii():
     patients_with_nrrds = os.listdir(nrrds_path)
 
     for patient_id in patients_with_nrrds:
+        print(f"Converting {patient_id} delineations to nii...")
         nrrd_delineation_to_nii(patient_id)
 
 
+# Convert the .nrrd delineations of a single patient to .nii.gz while also combining
+# them into a single file
+# Patterns are distinguished by the label they are given in the resulting segmentation map
 def nrrd_delineation_to_nii(patient_id):
     delineations_path = "../data/Regions ground truth"
     nrrds_of_patient_path = f"{delineations_path}/Regions delineations/{patient_id}"
@@ -335,11 +377,6 @@ def nrrd_delineation_to_nii(patient_id):
             os.makedirs(f"{nii_delineations_path}")
 
     combined_delineation = None
-
-    # Reading pre-combined delineations from new patients
-    if "combined" in os.listdir(nrrds_of_patient_path):
-        delineation = sitk.ReadImage(f"{nrrds_of_patient_path}/{file}")
-        combined_delineation = sitk.GetArrayFromImage(delineation)
 
     for file in os.listdir(nrrds_of_patient_path):
         if "Atrophy" in file:
@@ -371,44 +408,271 @@ def nrrd_delineation_to_nii(patient_id):
 
 
 
+# Function to verify that for each patient in the model data, the direction matrix and origin
+# of the t2 images match those of their registered delineations.
+# If they are not the same, model preprocessing and training cannot start.
+def verify_model_data_direction_and_origins():
+    nnUNet_data_path = "../data/nnUNet_raw/Dataset001_pca"
+    train_images_path = f"{nnUNet_data_path}/ImagesTr"
+    test_images_path = f"{nnUNet_data_path}/ImagesTs" \
+                       if os.path.exists(f"{nnUNet_data_path}/ImagesTs") \
+                       else None
+    labels_path = f"{nnUNet_data_path}/labelsTr"
+    faulty_patients = set()
+
+    # Checking train images
+    ids = list(set([f[:10] for f in os.listdir(train_images_path)]))
+
+    specific_patient = input("Want to check a specific patient? \"no\"\\\"id\": ")
+    if "no" in specific_patient:
+        specific_patient = None
+
+    for id in ids:
+        if specific_patient != None:
+            if id != specific_patient:
+                continue
+
+        print(f"Checking patient {id}")
+        t2 = sitk.ReadImage(f"{train_images_path}/{id}_0000.nii.gz")
+        delineation = sitk.ReadImage(f"{labels_path}/{id}.nii.gz")
+
+        # Check if Direction matrix matches
+        if np.allclose(t2.GetDirection(), delineation.GetDirection(), rtol=0.001) == False:
+            faulty_patients.add(id)
+            print(f"Direction mismatch for {id}")
+            print("\nt2 Direction matrix:   ")
+            print(t2.GetDirection())
+            print("\nDelineation Direction matrix:  ")
+            print(delineation.GetDirection())
+        
+        if np.allclose(t2.GetOrigin(), delineation.GetOrigin(), rtol=0.001) == False:
+            faulty_patients.add(id)
+            print(f"Origin mismatch for patient {id}")
+            print("\nt2 Origin:           ")
+            print(t2.GetOrigin())
+            print("\nDelineation Origin:  ")
+            print(delineation.GetOrigin())
+        
+        print()
+
+    # Checking test images
+    if test_images_path:
+        ids = list(set([f[:10] for f in os.listdir(test_images_path)]))
+
+        for id in ids:
+            if specific_patient != None:
+                if id != specific_patient:
+                    continue
+
+            print(f"Checking patient {id}")
+            t2 = sitk.ReadImage(f"{test_images_path}/{id}_0000.nii.gz")
+            delineation = sitk.ReadImage(f"{labels_path}/{id}.nii.gz")
+
+            # Check if Direction matrix matches
+            if np.allclose(t2.GetDirection(), delineation.GetDirection(), rtol=0.001) == False:
+                faulty_patients.add(id)
+                print(f"Direction mismatch for {id}")
+                print("\nt2 Direction matrix:   ")
+                print(t2.GetDirection())
+                print("\nDelineation Direction matrix:  ")
+                print(delineation.GetDirection())
+            
+            if np.allclose(t2.GetOrigin(), delineation.GetOrigin(), rtol=0.001) == False:
+                faulty_patients.add(id)
+                print(f"Origin mismatch for patient {id}")
+                print("\nt2 Origin:           ")
+                print(t2.GetOrigin())
+                print("\nDelineation Origin:  ")
+                print(delineation.GetOrigin())
+
+            print()
+
+    faulty_patients = list(faulty_patients)
+    faulty_patients.sort(key = lambda x: int(x[-3:]))
+
+    return faulty_patients
 
 
-# Read the patient t2
-# series_numbers_dict = load_series_numbers_dict("../data/T2w_seriesnumber_info_Lucas.xlsx")
-# patient_t2 = read_patient_t2_sitk("MARPROC" + str(patient_number).zfill(3), series_numbers_dict)
+# Function to verify that for each patient in the model data, the direction matrix and origin
+# of the t2 images match those of their registered delineations.
+# If they are not the same, model preprocessing and training cannot start.
+def verify_raw_data_direction_and_origins(seriesnumber_info_path, exact_match=False):
+    seriesnumbers_dict = load_series_numbers_dict(seriesnumber_info_path)
 
-# Unused
-def read_patient_t2_sitk(patient_id, series_numbers_dict):
-    seriesnumber, sequence, number_of_slices = series_numbers_dict[patient_id] \
-        if patient_id in series_numbers_dict \
-        else (None, None, None)
+    scans_data_path = f"../data/Scans"
+    raw_delineations_path = f"../data/Regions ground truth/Regions delineations"
 
-    patient_folder = f"../data/Scans/{patient_id}_nii"
+    patient_folders = [f for f in os.listdir(scans_data_path)]
 
-    scans = [f for f in listdir(patient_folder)]
+    specific_patient = input("Want to check a specific patient? \"no\"\\\"id\": ")
+    if "no" in specific_patient:
+        specific_patient = None
 
-    for scan in scans:
-        # Check if a series number was found for the patient
-        # If so check if the series number appears in the filename & if
-        # the file is a t2 scan (t2 or T2 appears in filename)
-        # If not, check if the file is an exception & if *sequence
-        # appears in its filename (usually "MARPROC....")
-        if (seriesnumber, sequence, number_of_slices) != (None, None, None) and \
-            ((not pd.isna(seriesnumber) and seriesnumber in scan and ("t2" in scan or "T2" in scan))
-            or sequence in scan):
-            print("Loading ", scan)
-            t2 = sitk.ReadImage(f"{patient_folder}/{scan}")
+    faulty_patients = set()
+    for patient_folder in patient_folders:
+        patient_id = patient_folder[:10]
 
-            # Check if the shape of the image matches the manually extracted amount of slices from inspection
-            print(t2.GetSize())
-            if t2.GetSize()[2] != number_of_slices:
-                print("--------------------")
-                print(patient_id)
-                print("Shape ", t2.GetSize(), " doesnt match number of slices ", number_of_slices, "\n")
+        if specific_patient != None:
+            if patient_id != specific_patient:
+                continue
 
-            return t2
+        seriesnumber, sequence = seriesnumbers_dict[patient_id] \
+        if patient_id in seriesnumbers_dict \
+        else (None, None)
+
+        # Search patient scans folder
+        path_to_patient_scans = f"{scans_data_path}/{patient_folder}"
+        if "nii" in os.listdir(path_to_patient_scans):
+            path_to_patient_scans += "/nii"
+        scans = [f for f in os.listdir(path_to_patient_scans)]
+
+        for scan in scans:
+            if (seriesnumber, sequence) != (None, None) and \
+                ((not pd.isna(seriesnumber) and seriesnumber in scan and \
+                (any([indicator in scan for indicator in AXIALT2_INDICATORS])))
+                ):
+                t2 = sitk.ReadImage(f"{path_to_patient_scans}/{scan}")
+
+                # find delineation
+                for f in os.listdir(raw_delineations_path):
+                    if patient_id in f:
+                        # print(f"Found patient delineations folder: {f}")
+                        path_to_patient_delineation_folder = f"{raw_delineations_path}/{f}"
+                        print(path_to_patient_delineation_folder)
+                        first_scan_in_folder = os.listdir(path_to_patient_delineation_folder)[0]
+                        print(first_scan_in_folder)
+                        delineation = sitk.ReadImage(f"{path_to_patient_delineation_folder}/{first_scan_in_folder}")
+
+                        # Check if the direction & origins match between images
+                        # Check with a margin if exact_match == False
+                        if exact_match == False:
+                            direction_match = np.allclose(t2.GetDirection(), delineation.GetDirection(), rtol=0.001)
+                            origin_match = np.allclose(t2.GetOrigin(), delineation.GetOrigin(), rtol=0.001)
+                        else:
+                            direction_match = np.all(t2.GetDirection() == delineation.GetDirection())
+                            origin_match = np.all(t2.GetOrigin() == delineation.GetOrigin())
+                        if direction_match == False:
+                            faulty_patients.add(patient_id)
+                            print(f"Direction mismatch for {patient_id}")
+                            print("\nt2 Direction matrix:   ")
+                            print(t2.GetDirection())
+                            print("\nDelineation Direction matrix:  ")
+                            print(delineation.GetDirection())
+                        if origin_match == False:
+                            faulty_patients.add(patient_id)
+                            print(f"Origin mismatch for patient {patient_id}")
+                            print("\nt2 Origin:           ")
+                            print(t2.GetOrigin())
+                            print("\nDelineation Origin:  ")
+                            print(delineation.GetOrigin())
+                        break
+
+        if specific_patient != None:
+            if patient_id == specific_patient:
+                print("\nt2 Direction matrix:   ")
+                print(t2.GetDirection())
+                print("\nDelineation Direction matrix:  ")
+                print(delineation.GetDirection())
+                return
+        print("----\n\n")
+
+    faulty_patients = list(faulty_patients)
+    faulty_patients.sort(key = lambda x: int(x[-3:]))
+
+    return faulty_patients
+
+
+# Prompt user to select a nnUNet dataset by set id (the integer identifier)
+def prompt_select_set():
+    print("From which set?")
+    set_nrs = set()
+    for dataset in os.listdir("../data/nnUNet_raw"):
+        set_nr = int(dataset[7:10])
+        set_nrs.add(set_nr)
+        print(f"    {set_nr}: {dataset}")
+    answer = input("")
+    if int(answer) not in set_nrs:
+        print(f"Set {answer} not found")
+        return None
+    else:
+        return answer
+
+
+# Function to remove files of model data of a given iterable of patient_id's
+# from a single nnUNet-preprocessed dataset
+def remove_patients_from_modeldata(dataset_nr,
+                                   patients_to_remove):
+    path_to_dataset = None
+    removed_successfully = []
+
+    for dataset in os.listdir("../data/nnUNet_raw"):
+        if str(dataset_nr).zfill(3) in dataset:
+            path_to_dataset = f"../data/nnUNet_raw/{dataset}"
+            break
     
-    return None
+    if path_to_dataset == None:
+        print(f"Dataset {dataset_nr} not found...")
+
+    # Deleting files in the training folder
+    for patient_file in os.listdir(f"{path_to_dataset}/imagesTr"):
+        patient_id = patient_file[:10]
+
+        if patient_id in patients_to_remove:
+            os.remove(f"{path_to_dataset}/imagesTr/{patient_file}")
+            removed_successfully.append(patient_file)
+    # Deleting files in the labels folder
+    for patient_file in os.listdir(f"{path_to_dataset}/labelsTr"):
+        patient_id = patient_file[:10]
+
+        if patient_id in patients_to_remove:
+            os.remove(f"{path_to_dataset}/labelsTr/{patient_file}")
+            removed_successfully.append(patient_file)
+    # Deleting files in the test folder if it exists
+    if os.path.exists(f"{path_to_dataset}/imagesTs"):
+        for patient_file in os.listdir(f"{path_to_dataset}/imagesTs"):
+            patient_id = patient_file[:10]
+
+            if patient_id in patients_to_remove:
+                os.remove(f"{path_to_dataset}/imagesTs/{patient_file}")
+                removed_successfully.append(patient_id)
+
+    print("Removed")
+    print(f"{removed_successfully}")
+    print("Successfully")
+
+
+# Function to determine the gleason grade of a patient's delineation by
+# counting the amount of voxels per pattern
+# The two most common classes of voxels determine the grade
+def determine_gleason_grade(delineation):
+    data_array = sitk.GetArrayFromImage(delineation)
+
+    label_to_gleasonscore = {
+        1: 3,
+        2: 4,
+        3: 4
+    }
+
+    unique, counts = np.unique(data_array, return_counts=True)
+    dct = dict(zip(unique, counts))
+    del dct[0]
+    if not dct:
+        print("No delineated voxels, no regions")
+        return 0
+    
+    sorted_region_occurrences = sorted(dct.items(),
+                                       key = lambda x: x[1], 
+                                       reverse = True)
+
+    gleason_scores = [label_to_gleasonscore[label] for label, _ in sorted_region_occurrences][:2]
+    print(gleason_scores)
+    
+    print(sum(gleason_scores) if len(gleason_scores) == 2 else 2 * gleason_scores[0])
+    print()
+    return sum(gleason_scores) if len(gleason_scores) == 2 else 2 * gleason_scores[0]
+
+
+
 
 # TESTING FUNCTION!
 def read_and_save_delineation(patient_number):
@@ -464,3 +728,6 @@ def read_and_save_delineation(patient_number):
         
     nb.save(t2, test_path + f"/{patient.id}/{patient.id}_t2" + ".nii.gz")
     nb.save(nifti_delineation, test_path + f"/{patient.id}/{patient.id}_delineation_combined" + ".nii.gz")
+
+
+

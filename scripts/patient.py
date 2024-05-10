@@ -8,14 +8,19 @@ import pickle
 
 
 class Patient:
+    # Each of the image fields are expected to contain Nifti1Image objects with
+    # the respective images
     def __init__(self, id):
         self.id = id
 
         self.axialt2 = None
         self.adcmap = None
         self.perfusionmap = None
+        # The region delineation is expected to be a Nifti1Image containing data
+        # that is registered to the patients' axialt2, and is thus of the same shape
         self.region_delineation = None
         
+        # Contains the data with ground-truth matched slices of the images (see extract_slice_tuples)
         self.model_data = dict()
 
     # Set axial (also called transversal sometimes) scan image
@@ -35,13 +40,13 @@ class Patient:
 
 
     def get_axialt2_image_array(self):
-        return np.asarray(self.axialt2.dataobj)
+        return np.asarray(self.axialt2.get_fdata())
     
     def get_adc_image_array(self):
-        return np.asarray(self.adcmap.dataobj)
+        return np.asarray(self.adcmap.get_fdata())
     
     def get_perfusion_image_array(self):
-        return np.asarray(self.perfusionmap.dataobj)
+        return np.asarray(self.perfusionmap.get_fdata())
     
 
     def get_patient_delineation_slices(self):
@@ -49,7 +54,7 @@ class Patient:
         delineated_slices_gg4 = []
         delineated_slices_Cribriform = []
 
-        for i, slice in enumerate(np.rollaxis(self.region_delineation.get_fdata(), 2)):
+        for i, slice in enumerate(np.rollaxis(self.region_delineation.get_fdata(), axis = 2)):
             if 1 in slice:
                 delineated_slices_gg3.append(i)
             if 2 in slice:
@@ -101,7 +106,9 @@ class Patient:
                self.adcmap.shape == \
                self.perfusionmap.shape
 
-            
+    
+    # Extract only the slices (for each delineation) that have a ground
+    # truth associated with them in the region delineation
     def extract_slice_tuples(self):
         if not self.dwis_reshaped():
             print(self.id, "DWI's are not reshaped")
@@ -133,6 +140,7 @@ class Patient:
                            "perfusionmap": perfusion_subimg,
                            "region_delineation": delineation_subimg
                            }
+                           
         
 
     def write_to_pkl(self, path):
@@ -142,6 +150,16 @@ class Patient:
 
         with open(path + "/" + self.id + ".pkl", 'wb') as output:
             pickle.dump(self, output, pickle.HIGHEST_PROTOCOL)
+
+
+    def load_patient_from_pkl(patient_id, path=None):
+        if path == None:
+            path = f"../data/pkl_preprocessed/{patient_id}.pkl"
+
+        with open(path, 'rb') as input:
+            patient = pickle.load(input)
+                
+        return patient
         
 
     def write_patient_model_data(self, path):
