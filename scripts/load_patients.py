@@ -30,8 +30,8 @@ if len(sys.argv) == 2:
             
 
         preprocessed_patient_generator = read_scans_utils.read_preprocess_patients(
-            scans_data_path="../data/Scans",
-            seriesnumber_info_path="../data/T2w_seriesnumber_info_Lucas.xlsx",
+            scans_data_path="../data/Scans/all_scans",
+            seriesnumber_info_path="../data/Scans/T2w_seriesnumber_info_Lucas.xlsx",
             patients_to_skip = current_patient_pkls
         )
 
@@ -98,8 +98,11 @@ if len(sys.argv) == 2:
             pickles_path = "../data/pkl_preprocessed"
         )
         
-        read_scans_utils.write_patients_model_data(patient_loader,
-                                                  "../data")
+        new_dataset_nr = input("New dataset number: ")
+
+        read_scans_utils.write_patients_model_data(new_dataset_nr,
+                                                   patient_loader,
+                                                   "../data")
         
         answer = "none"
         while answer not in {"y", "n"}:
@@ -109,10 +112,10 @@ if len(sys.argv) == 2:
             while answer not in {"y", "n"}:
                 answer = input("Do you want to create a static validation split? y/n\n")
             if answer == "y":
-                data_split.create_train_val_test_split(1,
+                data_split.create_train_val_test_split(new_dataset_nr,
                                                        save_train_validation_json=True)
             else:
-                data_split.create_train_val_test_split(1,
+                data_split.create_train_val_test_split(new_dataset_nr,
                                                        save_train_validation_json=None)
         exit(0)
 
@@ -167,7 +170,7 @@ if len(sys.argv) == 2:
 
         if answer == "raw":
             nonmatching_patients = read_scans_utils.verify_raw_data_direction_and_origins(
-                seriesnumber_info_path="../data/T2w_seriesnumber_info_Lucas.xlsx",
+                seriesnumber_info_path="../data/Scans/T2w_seriesnumber_info_Lucas.xlsx",
                 exact_match=False
             )
         elif answer == "model":
