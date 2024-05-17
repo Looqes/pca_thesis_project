@@ -13,7 +13,7 @@ import SimpleITK as sitk
 
 
 
-SCANS_PATH = "../data/Scans"
+SCANS_PATH = "../data/Scans/all_scans"
 DELINEATIONS_PATH = "../data/Regions ground truth/Regions delineations/"
 
 AXIALT2_INDICATORS = {"t2", "T2"}
@@ -263,8 +263,8 @@ def write_label(patient, path):
 
 # path = "../data"
 # Function that writes data of given iterable of patients in the format that is expected by nnUNet
-def write_patients_model_data(patients, path):
-    model_data_path = path + "/nnUNet_raw/Dataset001_pca"
+def write_patients_model_data(dataset_nr, patients, path):
+    model_data_path = path + "/nnUNet_raw/Dataset" + str(dataset_nr).zfill(3) + "_pca"
     train_data_path = model_data_path + "/imagesTr"
     labels_data_path = model_data_path + "/labelsTr"
 
@@ -499,7 +499,7 @@ def verify_model_data_direction_and_origins():
 def verify_raw_data_direction_and_origins(seriesnumber_info_path, exact_match=False):
     seriesnumbers_dict = load_series_numbers_dict(seriesnumber_info_path)
 
-    scans_data_path = f"../data/Scans"
+    scans_data_path = f"../data/Scans/all_scans"
     raw_delineations_path = f"../data/Regions ground truth/Regions delineations"
 
     patient_folders = [f for f in os.listdir(scans_data_path)]
@@ -653,23 +653,37 @@ def determine_gleason_grade(delineation):
         3: 4
     }
 
+    gleasonscores_to_gleasongroup = {
+        # if only pattern 3 is found, the lesion is treated as 3 + 3, giving
+        # gleason grade group 1
+        (3,): 1,
+        (3, 4): 2,
+        (4, 3): 3,
+        # if only pattern 4 is found, the lesion is treated as 4 + 4, giving
+        # gleason grade group 4
+        (4,): 4
+    }
+
     unique, counts = np.unique(data_array, return_counts=True)
     dct = dict(zip(unique, counts))
     del dct[0]
     if not dct:
-        print("No delineated voxels, no regions")
+        print("No delineated voxels, no regions\n")
         return 0
     
     sorted_region_occurrences = sorted(dct.items(),
                                        key = lambda x: x[1], 
                                        reverse = True)
+    print(sorted_region_occurrences)
 
-    gleason_scores = [label_to_gleasonscore[label] for label, _ in sorted_region_occurrences][:2]
+    has_cribriform = any([item[0] == 3 for item in sorted_region_occurrences])
+    gleason_scores = tuple([label_to_gleasonscore[label] for label, _ in sorted_region_occurrences][:2])
     print(gleason_scores)
-    
-    print(sum(gleason_scores) if len(gleason_scores) == 2 else 2 * gleason_scores[0])
+
+    print(gleason_scores, " giving gleason grade group: ", gleasonscores_to_gleasongroup[gleason_scores])
+    print("result has cribriform? : ", has_cribriform)
     print()
-    return sum(gleason_scores) if len(gleason_scores) == 2 else 2 * gleason_scores[0]
+    return gleasonscores_to_gleasongroup[gleason_scores], has_cribriform
 
 
 
@@ -685,7 +699,7 @@ def read_and_save_delineation(patient_number):
 
 
     patient = read_patient("MARPROC" + str(patient_number).zfill(3) + "_nii",
-                                 load_series_numbers_dict("../data/T2w_seriesnumber_info_Lucas.xlsx"))
+                                 load_series_numbers_dict("../data/Scans/T2w_seriesnumber_info_Lucas.xlsx"))
     if not os.path.exists(test_path + "/MARPROC" + str(patient_number).zfill(3)):
             os.makedirs(test_path + "/MARPROC" + str(patient_number).zfill(3))
 

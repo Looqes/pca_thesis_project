@@ -111,7 +111,8 @@ def create_train_val_test_split(dataset_nr,
         "val"   : X_val,
     }]
 
-    # Extracting modalities...
+    # Extracting modalities & their id's (nnUNet format = XXXX with leading
+    # zeros after training case name & id, e.g. MARPROC311_0002)...
     modalities = list(set([case[11:15] for case in os.listdir(train_data_path)]))
     
     organize_dataset_by_split(train_data_path,
