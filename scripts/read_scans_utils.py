@@ -27,7 +27,7 @@ PERFUSION_INDICATORS = {"_perffrac.nii", "_perfFrac.nii"}
 # extracted by examining the data. They differ greatly across the data, introducing
 # complexity to the selection of files to read.
 def read_patient(folder_name, seriesnumbers_dict, print_errors=False, scans_path=SCANS_PATH):   
-    patient_id = folder_name[:-4] 
+    patient_id = folder_name[:10] 
     patient = Patient(patient_id)
     seriesnumber, sequence = seriesnumbers_dict[patient_id] \
         if patient_id in seriesnumbers_dict \
@@ -117,7 +117,7 @@ def read_preprocess_patients(scans_data_path, seriesnumber_info_path, patients_t
     scan_seriesnumbers = load_series_numbers_dict(seriesnumber_info_path)
     
     for folder in [f for f in listdir(scans_data_path)]:
-        patient_id = folder[:-4]
+        patient_id = folder[:10]
         
         if patient_id in patients_to_skip:
             continue
@@ -412,7 +412,7 @@ def nrrd_delineation_to_nii(patient_id):
 # of the t2 images match those of their registered delineations.
 # If they are not the same, model preprocessing and training cannot start.
 def verify_model_data_direction_and_origins():
-    nnUNet_data_path = "../data/nnUNet_raw/Dataset001_pca"
+    nnUNet_data_path = "../data/nnUNet_raw/Dataset005_pca"
     train_images_path = f"{nnUNet_data_path}/ImagesTr"
     test_images_path = f"{nnUNet_data_path}/ImagesTs" \
                        if os.path.exists(f"{nnUNet_data_path}/ImagesTs") \
@@ -661,7 +661,8 @@ def determine_gleason_grade(delineation):
         (4, 3): 3,
         # if only pattern 4 is found, the lesion is treated as 4 + 4, giving
         # gleason grade group 4
-        (4,): 4
+        (4,): 4,
+        (4, 4): 4
     }
 
     unique, counts = np.unique(data_array, return_counts=True)
@@ -669,20 +670,16 @@ def determine_gleason_grade(delineation):
     del dct[0]
     if not dct:
         print("No delineated voxels, no regions\n")
-        return 0
+        return 0, False
     
     sorted_region_occurrences = sorted(dct.items(),
                                        key = lambda x: x[1], 
                                        reverse = True)
-    print(sorted_region_occurrences)
 
     has_cribriform = any([item[0] == 3 for item in sorted_region_occurrences])
     gleason_scores = tuple([label_to_gleasonscore[label] for label, _ in sorted_region_occurrences][:2])
-    print(gleason_scores)
 
     print(gleason_scores, " giving gleason grade group: ", gleasonscores_to_gleasongroup[gleason_scores])
-    print("result has cribriform? : ", has_cribriform)
-    print()
     return gleasonscores_to_gleasongroup[gleason_scores], has_cribriform
 
 

@@ -6,7 +6,7 @@ import os
 # from scripts import read_scans_utils
 import read_scans_utils
 import data_split
-import patient
+# import patient
 from patient import Patient
 
 DONT_OVERWRITE_PICKLES = True
