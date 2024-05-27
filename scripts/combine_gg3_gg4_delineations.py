@@ -2,20 +2,38 @@
 import os
 import SimpleITK as sitk
 import numpy as np
+import shutil
+
+PATH_TO_NNUNET_RAW = "../data/nnUNet_raw"
 
 
 
+datasets = os.listdir(PATH_TO_NNUNET_RAW)
+print(datasets)
+full_datasetname = input("Name of dataset folder to use as reference: ")
+if full_datasetname not in datasets:
+    print("dataset not found")
+    exit(1)
 
-PATH_TO_NII_DELINEATIONS = "../data/Regions ground truth/delineations_nifti"
-PATH_TO_MODIFIED_DELINEATIONS = "../data/Regions ground truth/gg3gg4_combined_delineations"
 
+max_dataset_num = max([int(f[7:10]) for f in os.listdir(PATH_TO_NNUNET_RAW)])
 
+# The number ids of the two new datasets that will be created
+new_dataset_num = str(max_dataset_num + 1).zfill(3)
 
-for nii_delineation_file in os.listdir(PATH_TO_NII_DELINEATIONS):
+new_dataset_path = f"{PATH_TO_NNUNET_RAW}/Dataset{new_dataset_num}_pca_gg3gg4combined"
+
+shutil.copytree(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}",
+                new_dataset_path)
+
+path_to_new_set_delineations = f"{new_dataset_path}/labelsTr"
+
+print(f"Combining gleason labels in {path_to_new_set_delineations}...\n")
+for nii_delineation_file in os.listdir(path_to_new_set_delineations):
     patient_id = nii_delineation_file[:10]
     print("Reprocessing", nii_delineation_file, "...")
 
-    delineation = sitk.ReadImage(f"{PATH_TO_NII_DELINEATIONS}/{nii_delineation_file}")
+    delineation = sitk.ReadImage(f"{path_to_new_set_delineations}/{nii_delineation_file}")
     data_array = sitk.GetArrayFromImage(delineation)
     
     data_array[data_array == 2] = 1
@@ -27,4 +45,4 @@ for nii_delineation_file in os.listdir(PATH_TO_NII_DELINEATIONS):
     new_image.SetSpacing(delineation.GetSpacing())
 
     sitk.WriteImage(new_image,
-                    f"{PATH_TO_MODIFIED_DELINEATIONS}/{patient_id}_gg3gg4combined.nii.gz")
+                    f"{path_to_new_set_delineations}/{patient_id}.nii.gz")
