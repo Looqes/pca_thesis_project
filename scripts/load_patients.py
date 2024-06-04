@@ -87,6 +87,8 @@ if len(sys.argv) == 2:
                                             f"../data/debuggingoutput/{patient.id}")
             
         patient.show_patient_delineation_slices()
+        print(patient.axialt2.shape)
+        print(patient.model_data["axialt2"].shape)
         exit(0)
 
 

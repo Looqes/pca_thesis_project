@@ -16,7 +16,7 @@ if full_datasetname not in datasets:
     exit(1)
 
 
-max_dataset_num = max([int(f[7:10]) for f in os.listdir(PATH_TO_NNUNET_RAW)])
+max_dataset_num = max([int(f[7:10]) for f in os.listdir(PATH_TO_NNUNET_RAW) if "Dataset" in f])
 
 # The number ids of the two new datasets that will be created
 new_dataset_nums = (
@@ -32,72 +32,34 @@ shutil.copytree(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}",
 shutil.copytree(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}",
                 perfusion_dataset_path)
 
-exit(0)
 
-os.makedirs(f"{adc_dataset_path}/imagesTr")
-os.makedirs(f"{perfusion_dataset_path}/imagesTr")
+# Restructure ADC dataset
+#############################################################
+for file in os.listdir(f"{adc_dataset_path}/imagesTr"):
+    if "0002" in file:
+        os.remove(f"{adc_dataset_path}/imagesTr/{file}")
+for file in os.listdir(f"{adc_dataset_path}/imagesTs"):
+    if "0002" in file:
+        os.remove(f"{adc_dataset_path}/imagesTs/{file}")
 
-# Paths to all modality files, including those in test set of the full dataset
-t2_files_paths = [f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTr/{f}"
-                    for f in os.listdir(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTr")
-                    if "0000" in f] \
-                + \
-                    [f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTs/{f}"
-                    for f in os.listdir(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTs")
-                    if "0000" in f]
+# Restructure Perfusion dataset
+#############################################################
+for file in os.listdir(f"{perfusion_dataset_path}/imagesTr"):
+    if "0001" in file:
+        os.remove(f"{perfusion_dataset_path}/imagesTr/{file}")
+for file in os.listdir(f"{perfusion_dataset_path}/imagesTs"):
+    if "0001" in file:
+        os.remove(f"{perfusion_dataset_path}/imagesTs/{file}")
 
-adc_files_paths = [f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTr/{f}"
-                    for f in os.listdir(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTr")
-                    if "0001" in f] \
-                + \
-                    [f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTs/{f}"
-                    for f in os.listdir(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTs")
-                    if "0001" in f]
-
-perfusion_files_paths = [f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTr/{f}"
-                    for f in os.listdir(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTr")
-                    if "0002" in f] \
-                + \
-                    [f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTs/{f}"
-                    for f in os.listdir(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/imagesTs")
-                    if "0002" in f]
-
-# Copy t2 files to both sets
-for path in t2_files_paths:
-    print(f"Copying\n{path} ...\n\n")
-    shutil.copy(path,
-                f"{adc_dataset_path}/imagesTr")
-    shutil.copy(path,
-                f"{perfusion_dataset_path}/imagesTr")
-    
-# Copy adc files to adc set
-for path in adc_files_paths:
-    print(f"Copying\n{path} ...\n\n")
-    shutil.copy(path,
-                f"{adc_dataset_path}/imagesTr")
-    
-# Copy perfusion files to perfusion set
-# Rename them "0002" -> "0001"
-for path in perfusion_files_paths:
-    print(f"Copying perfusion file \n{path}...\n\n")
-    shutil.copy(path,
-                f"{perfusion_dataset_path}/imagesTr")
+# rename perfusion files to "0001"
 for file in os.listdir(f"{perfusion_dataset_path}/imagesTr"):
     if "0002" in file:
-        new_name = file.replace("0002", "0001")
-        os.rename(f"{perfusion_dataset_path}/imagesTr/{file}",
-                    f"{perfusion_dataset_path}/imagesTr/{new_name}")
-
-# ../data/nnUNet_raw/Dataset003_pcaperf/ImagesTR/MARPROCXXX_0002.nii.gz
-
-# Copy full label directory to both sets
-shutil.copytree(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/labelsTr",
-                f"{adc_dataset_path}/labelsTr")
-shutil.copytree(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}/labelsTr",
-                f"{perfusion_dataset_path}/labelsTr")
-
-read_scans_utils.create_datasetjson(adc_dataset_path,
-                                    ["AxialT2", "ADC"])
-read_scans_utils.create_datasetjson(perfusion_dataset_path,
-                                    ["AxialT2", "Perfusion"])
+        new_filename = file.replace("0002", "0001")
+        os.rename(f"{perfusion_dataset_path}/imagesTs/{file}",
+                  f"{perfusion_dataset_path}/imagesTr/{new_filename}")
+for file in os.listdir(f"{perfusion_dataset_path}/imagesTs"):
+    if "0002" in file:
+        new_filename = file.replace("0002", "0001")
+        os.rename(f"{perfusion_dataset_path}/imagesTs/{file}",
+                  f"{perfusion_dataset_path}/imagesTs/{new_filename}")
 

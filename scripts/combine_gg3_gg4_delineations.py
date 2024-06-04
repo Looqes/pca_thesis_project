@@ -21,7 +21,40 @@ max_dataset_num = max([int(f[7:10]) for f in os.listdir(PATH_TO_NNUNET_RAW)])
 # The number ids of the two new datasets that will be created
 new_dataset_num = str(max_dataset_num + 1).zfill(3)
 
-new_dataset_path = f"{PATH_TO_NNUNET_RAW}/Dataset{new_dataset_num}_pca_gg3gg4combined"
+
+# # Combine gg3 and gg4
+# # ########################################################################################
+# new_dataset_path = f"{PATH_TO_NNUNET_RAW}/Dataset{new_dataset_num}_pca_gg3gg4combined"
+
+# shutil.copytree(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}",
+#                 new_dataset_path)
+
+# path_to_new_set_delineations = f"{new_dataset_path}/labelsTr"
+
+# print(f"Combining gleason labels in {path_to_new_set_delineations}...\n")
+# for nii_delineation_file in os.listdir(path_to_new_set_delineations):
+#     patient_id = nii_delineation_file[:10]
+#     print("Reprocessing", nii_delineation_file, "...")
+
+#     delineation = sitk.ReadImage(f"{path_to_new_set_delineations}/{nii_delineation_file}")
+#     data_array = sitk.GetArrayFromImage(delineation)
+    
+#     data_array[data_array == 2] = 1
+#     data_array[data_array == 3] = 2
+
+#     new_image = sitk.GetImageFromArray(data_array)
+#     new_image.SetDirection(delineation.GetDirection())
+#     new_image.SetOrigin(delineation.GetOrigin())
+#     new_image.SetSpacing(delineation.GetSpacing())
+
+#     sitk.WriteImage(new_image,
+#                     f"{path_to_new_set_delineations}/{patient_id}.nii.gz")
+    
+
+
+# remove all but cribriform
+# ########################################################################################
+new_dataset_path = f"{PATH_TO_NNUNET_RAW}/Dataset{new_dataset_num}_pca_cribriform_only"
 
 shutil.copytree(f"{PATH_TO_NNUNET_RAW}/{full_datasetname}",
                 new_dataset_path)
@@ -36,8 +69,10 @@ for nii_delineation_file in os.listdir(path_to_new_set_delineations):
     delineation = sitk.ReadImage(f"{path_to_new_set_delineations}/{nii_delineation_file}")
     data_array = sitk.GetArrayFromImage(delineation)
     
-    data_array[data_array == 2] = 1
-    data_array[data_array == 3] = 2
+    # Remove GG3 and GG4 labels, make cribriform the first label
+    data_array[data_array == 1] = 0
+    data_array[data_array == 2] = 0
+    data_array[data_array == 3] = 1
 
     new_image = sitk.GetImageFromArray(data_array)
     new_image.SetDirection(delineation.GetDirection())
