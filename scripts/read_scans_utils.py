@@ -15,6 +15,7 @@ import SimpleITK as sitk
 
 SCANS_PATH = "../data/Scans/all_scans"
 DELINEATIONS_PATH = "../data/Regions ground truth/Regions delineations/"
+NIFTI_DELINEATIONS_PATH = "../data/Regions ground truth/delineations_nifti"
 
 AXIALT2_INDICATORS = {"t2", "T2"}
 ADC_INDICATORS = {"_adc.nii", "_ADC.nii"}
@@ -681,6 +682,26 @@ def determine_gleason_grade(delineation):
 
     print(gleason_scores, " giving gleason grade group: ", gleasonscores_to_gleasongroup[gleason_scores])
     return gleasonscores_to_gleasongroup[gleason_scores], has_cribriform
+
+
+
+# Function that gives the indexes (in depth) of the slices that have delineations in them
+# it is assumed that the given delineation is an image opened with sitk, in which the first
+# index represents the z direction or depth (z, x, y)
+def get_delineated_slice_indexes_from_delineation(delineation):
+    if isinstance(delineation, np.ndarray):
+        delineation_array = delineation
+    else:
+        delineation_array = sitk.GetArrayFromImage(delineation)
+
+    delineation_slices = []
+    for i, slice in enumerate(np.rollaxis(delineation_array, axis = 0)):
+        if len(np.unique(slice)) > 1:
+            delineation_slices.append(i)
+    
+    return delineation_slices
+
+
 
 
 

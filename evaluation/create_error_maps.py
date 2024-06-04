@@ -8,8 +8,8 @@ import pickle as pkl
 import os
 import sys
 "../scripts" not in sys.path and sys.path.insert(0, '../scripts')
-
 import read_scans_utils
+import image_scaling
 from patient import Patient
 
 
@@ -17,7 +17,7 @@ PATH_TO_PKLS = "../data/pkl_preprocessed"
 PATH_TO_NII_DELINEATIONS = "../data/Regions ground truth/delineations_nifti"
 
 
-# Take errormap of patient, and rescale it to the size of patient's original t2
+# Take errormap of patient, and rescale it to the size of patient's original t2/delineation
 def upscale_errormap(patient_id, errormap, output_path):
     output_path = f"./contours_compare_validation/Dataset005_pca/upscaled_errormaps"
     if not os.path.exists(output_path):
@@ -125,8 +125,10 @@ if len(sys.argv) == 2:
             sitk.WriteImage(error_map_image,
                             f"{path_to_errormaps_folder}/{file}")
             
-            upscale_errormap(file[:10], error_map, path_to_upscaled_errormaps_folder)
-            
+            # upscale_errormap(file[:10], error_map, path_to_upscaled_errormaps_folder)
+            image_scaling.upscale_delineation(file[:10], 
+                                              error_map, 
+                                              path_to_upscaled_errormaps_folder)
             print("----------\n")
 
 
