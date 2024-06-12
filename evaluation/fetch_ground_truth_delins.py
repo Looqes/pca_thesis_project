@@ -77,6 +77,7 @@ if len(sys.argv) == 2:
                 f"./contours_compare_{sys.argv[1]}/{dataset_name}/downscaled_prostate_delineations"
             )
             
-        exit(0)                
+        exit(0)
+
 
 print("fetch_ground_truth_delins.py [test/validation]")
