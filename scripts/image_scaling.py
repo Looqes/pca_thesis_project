@@ -7,7 +7,6 @@ import nibabel as nb
 from nibabel.processing import conform
 
 
-
 SCANS_PATH = "../data/Scans/all_scans"
 DELINEATIONS_PATH = "../data/Regions ground truth/Regions delineations/"
 NIFTI_DELINEATIONS_PATH = "../data/Regions ground truth/delineations_nifti"
