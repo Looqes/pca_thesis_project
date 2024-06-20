@@ -19,6 +19,6 @@ for model in os.listdir(path_to_models):
         shutil.copy(path_to_model_validation_results_summary,
                     f"{path_to_validation_evaluation}/{model}")
     else:
-        print(f"{model} evaluation folder not founds")
+        print(f"{model} evaluation folder not found")
 
     

@@ -359,9 +359,10 @@ def convert_delineations_to_nii():
     delineations_path = "../data/Regions ground truth"
     nrrds_path= f"{delineations_path}/Regions delineations/"
 
-    patients_with_nrrds = os.listdir(nrrds_path)
+    patient_folders_with_nrrds = os.listdir(nrrds_path)
 
-    for patient_id in patients_with_nrrds:
+    for patient_folder in patient_folders_with_nrrds:
+        patient_id = patient_folder[:10]
         print(f"Converting {patient_id} delineations to nii...")
         nrrd_delineation_to_nii(patient_id)
 
