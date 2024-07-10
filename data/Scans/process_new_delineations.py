@@ -6,7 +6,7 @@ from collections import defaultdict
 
 
 # #############################################################################
-# For new patient files with delineations
+# For new patient files with delineations (last batch)
 # These do not come in the format of files per Gleason pattern, but
 # instead as a single segementation with individual labels. These need to be
 # reformatted to the defined format as in patient objects, where the map
@@ -14,8 +14,9 @@ from collections import defaultdict
 # voxels.
 # #############################################################################
 
-delineations_path = "./scans231_294/Delineations"
-nii_delineations_path = "../Regions Ground Truth/delineations_nifti"
+# Path to the delineations of the final batch
+delineations_path = "../data/Scans/scans231_294/Delineations"
+nii_delineations_path = "../data/Regions ground truth/delineations_nifti"
 
 with open("patients_to_not_use.txt") as f:
     patients_to_not_use = set([line.strip() for line in f.readlines() if line != "\n"])
@@ -50,6 +51,8 @@ for folder in os.listdir(delineations_path):
             output_delineation = np.zeros(raw_delineation_array.shape)
 
             # Identify which integer markers represent which pattern
+            # integer markers are labeled by ints ranging from 0 to 5
+            # What pattern is marked by what integer is read from the marker name
             for i in range(6):
                 try: 
                     segment_name = reader.GetMetaData(f"Segment{i}_Name")
