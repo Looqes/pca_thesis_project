@@ -14,8 +14,9 @@ from collections import defaultdict
 # voxels.
 # #############################################################################
 
-delineations_path = "./scans231_294/Delineations"
-nii_delineations_path = "../Regions Ground Truth/delineations_nifti"
+# Path to the delineations of the final batch
+delineations_path = "../data/Scans/scans231_294/Delineations"
+nii_delineations_path = "../data/Regions ground truth/delineations_nifti"
 
 with open("patients_to_not_use.txt") as f:
     patients_to_not_use = set([line.strip() for line in f.readlines() if line != "\n"])
