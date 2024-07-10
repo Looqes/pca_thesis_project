@@ -9,6 +9,7 @@ import data_split
 # import patient
 from patient import Patient
 
+# Controls if pkls that are already present will be newly made and overwritten
 DONT_OVERWRITE_PICKLES = True
 
 # If read raw and save is selected on running the program the raw scan data will be read

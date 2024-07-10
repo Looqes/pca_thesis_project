@@ -354,7 +354,7 @@ def collect_patient_metadata(patients=None, read_from_files=False):
 
 
 
-# Convert all nrrd delineations in the Regions ground truth map to .nii delineations
+# Convert all nrrd delineations in the Regions ground truth folder to .nii delineations
 def convert_delineations_to_nii():
     delineations_path = "../data/Regions ground truth"
     nrrds_path= f"{delineations_path}/Regions delineations/"
@@ -413,8 +413,8 @@ def nrrd_delineation_to_nii(patient_id):
 # Function to verify that for each patient in the model data, the direction matrix and origin
 # of the t2 images match those of their registered delineations.
 # If they are not the same, model preprocessing and training cannot start.
-def verify_model_data_direction_and_origins():
-    nnUNet_data_path = "../data/nnUNet_raw/Dataset005_pca"
+def verify_model_data_direction_and_origins(model_name):
+    nnUNet_data_path = f"../data/nnUNet_raw/{model_name}"
     train_images_path = f"{nnUNet_data_path}/ImagesTr"
     test_images_path = f"{nnUNet_data_path}/ImagesTs" \
                        if os.path.exists(f"{nnUNet_data_path}/ImagesTs") \
@@ -648,11 +648,12 @@ def remove_patients_from_modeldata(dataset_nr,
 # The two most common classes of voxels determine the grade
 def determine_gleason_grade(delineation):
     data_array = sitk.GetArrayFromImage(delineation)
+    has_cribriform = 3 in data_array
+    data_array[data_array == 3] = 2
 
     label_to_gleasonscore = {
         1: 3,
         2: 4,
-        3: 4
     }
 
     gleasonscores_to_gleasongroup = {
@@ -678,10 +679,9 @@ def determine_gleason_grade(delineation):
                                        key = lambda x: x[1], 
                                        reverse = True)
 
-    has_cribriform = any([item[0] == 3 for item in sorted_region_occurrences])
     gleason_scores = tuple([label_to_gleasonscore[label] for label, _ in sorted_region_occurrences][:2])
 
-    print(gleason_scores, " giving gleason grade group: ", gleasonscores_to_gleasongroup[gleason_scores])
+    # print(gleason_scores, " giving gleason grade group: ", gleasonscores_to_gleasongroup[gleason_scores])
     return gleasonscores_to_gleasongroup[gleason_scores], has_cribriform
 
 
