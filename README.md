@@ -23,3 +23,14 @@ Lastly, a folder called `bash_scripts` is included containing the bash scripts u
 The notebooks folder contains notebooks for both Exploratory Data Analysis (EDA) on the data before model training, and notebooks for evaluation using various approaches on the model outputs (comparing to the ground truth delineations).
 
 
+## Pipeline
+
+Before preprocessing can start, scans must be collected in `data/Scans/all_scans`, and delineations in `data/Regions ground truth/Regions delineations`.
+
++ Step 1 is to process .nrrd delineations into .nii files using `process_new_delineations.py` and `process_old_delineations.py`.
++ Step 2 is to read the scan and delineation files and create the patient objects, on which preprocessing is also performed by `load_patients.py` with the `-rras` (read raw and save) flag.
++ Step 3 is to format the patient data into the format nnU-Net expects, by calling `load_patients.py` with the `-cnd` flag.
+
+Note: The input data in this project contained some inconsistencies for which the above scripts perform checking. This is mainly some missing delineations and some delinations of the wrong size (size differs from T2 while it should be the same since they are registered to the T2 scans). However a problematic bug has persisted causing the spatial data (in SimleITK terms, the direction and origin header data) of some delineations to change when loaded and then saved as a .nii, even when they are already converted to a .nii. `load_patients.py` has a verification function if called with the `-vm` flag, that can check either the nnU-Net prepared data, or the raw data. Problematic patient ids are collected and can be put in a `patients_to_remove.txt` file in the `scripts` folder. If `load_patients.py` is called with the `-rm` flag, these patients will be removed from nnU-Net prepared data.
+
+
